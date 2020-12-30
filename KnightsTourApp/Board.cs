@@ -1,53 +1,36 @@
-﻿using KnightsTourApp.Properties;
-using System;
-using System.Collections.Generic;
+﻿using System;
 using System.Diagnostics;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
 
 namespace KnightsTourApp
 {
-    
-
     class Board
     {
-        public int width { get; set; }
-        public int height { get; set; }
-
+        public int Width { get; set; }
+        public int Height { get; set; }
         public int[,] fields { get; set; }
 
-        //int[,] fields;
-        //The board's dimensions
-        //int width, height;
         //Initial starting position
         int startX, startY;
-
-        public bool solved = false;
-        public int attempts = 0;
+        int attempts = 0;
 
         //The knight which will travel across the board
-        Knight knight;
+        public Knight knight { get;}
+        public Stopwatch stopwatch = new Stopwatch();
 
-        public Stopwatch sw = new Stopwatch();
-        Thread solveThread;
-        MainForm parent;
+        private MainForm parent;
 
-        public Board(int w, int h, int sX, int sY, MainForm parent)
+        public Board(int w, int h, int sx, int sy, MainForm parent)
         {
-            width = w;
-            height = h;
+            Width = w;
+            Height = h;
 
-            startX = sX;
-            startY = sY;
-
+            startX = sx;
+            startY = sy;
 
             this.parent = parent;
 
-            knight = new Knight(sX, sY);
+            knight = new Knight(startX, startY);
 
             getSolution();
         }
@@ -70,7 +53,7 @@ namespace KnightsTourApp
         private bool isValidStep(int xPos, int yPos)
         {
             //Checks if the given cell is visited or not, also checks if it is inside the board
-            return ((xPos >= 0 && yPos >= 0) && (xPos < width && yPos < height)) && (fields[yPos, xPos] == 0);
+            return ((xPos >= 0 && yPos >= 0) && (xPos < Width && yPos < Height)) && (fields[yPos, xPos] == 0);
             //     |                    Boundary check                         |    |   field value check   |
         }
 
@@ -86,7 +69,7 @@ namespace KnightsTourApp
             return count;
         }
 
-        private Knight nextMove(Knight _knight)
+        private bool nextMove()
         {
             //index of the smallest degree step
             int minDegIdx = -1;
@@ -95,18 +78,17 @@ namespace KnightsTourApp
 
             int degrees, nextX, nextY;
 
-            //Helps to randomize the steps for different results
-            int randomStart = new Random().Next(knight.patternX.Length) % knight.patternX.Length;
+            int startRandom = new Random().Next(8);
 
             //iterating trough the steps
             for (int count = 0; count < knight.patternX.Length; ++count)
             {
                 //minimal randomization for steps to add variety and get different results
-                int i = (randomStart + count) % knight.patternX.Length;
+                int i = (startRandom + count) % knight.patternX.Length;
 
                 //coordinates of the next step
-                nextX = _knight.x + knight.patternX[i];
-                nextY = _knight.y + knight.patternY[i];
+                nextX = knight.x + knight.patternX[i];
+                nextY = knight.y + knight.patternY[i];
 
                 //checks if the next step has a smaller degree than the current minimum
                 if (isValidStep(nextX, nextY) && (degrees = getDegree(nextX, nextY)) < minDeg)
@@ -116,24 +98,24 @@ namespace KnightsTourApp
                 }
             }
 
-            //if did not found a suitable step, return null
-            if (minDegIdx == -1) return null;
+            //if did not found a suitable step, return false
+            if (minDegIdx == -1) return false;
 
             //if found a suitable step, set the upcoming step's value to the minimal degree step
-            nextX = _knight.x + knight.patternX[minDegIdx];
-            nextY = _knight.y + knight.patternY[minDegIdx];
+            nextX = knight.x + knight.patternX[minDegIdx];
+            nextY = knight.y + knight.patternY[minDegIdx];
 
             //sets the boards value to the upcoming value at the coords' of the next step
-            fields[nextY, nextX] = fields[_knight.y, _knight.x] + 1;
+            fields[nextY, nextX] = fields[knight.y, knight.x] + 1;
 
             //sets the current cell's coords to the next cell's coords
-            _knight.x = nextX;
-            _knight.y = nextY;
+            knight.x = nextX;
+            knight.y = nextY;
 
-            return _knight;
+            return true;
         }
 
-        private bool neighbour()
+        private bool isClosedPath()
         {
             //Checks if the knight can return to its starting position
             for (int i = 0; i < knight.patternX.Length; ++i)
@@ -148,7 +130,7 @@ namespace KnightsTourApp
             attempts++;
 
             //Initializes the board at every attempt
-            fields = initBoard(width, height);
+            fields = initBoard(Width, Height);
             //Sets the starting position to 1
             fields[startY, startX] = 1;
 
@@ -157,48 +139,36 @@ namespace KnightsTourApp
             knight.y = startY;
 
             //Moves trough every field except the initial cell and the removed corners (-5)
-            for (int i = 0; i < width * height - 5; ++i)
-                if (nextMove(knight) == null) return false;
+            for (int i = 0; i < Width * Height - 5; ++i)
+                if (!nextMove()) return false;
 
             //After it is done, checks if it is a closed route or not
-            return neighbour();
+            return isClosedPath();
         }
 
         private void solve()
         {
-            parent.Invoke(new Action(() =>
-            {
-                parent.addText("Solving Started...\n");
-            }));
+            attempts = 0;
 
-            sw.Start();
+            parent.Invoke(new Action(() => { parent.addText("Solving Started..."); }));
+
             //Tries to find a route
-            while (!findRoute()) { }
-            sw.Stop();
+            stopwatch.Restart();
 
-            //If it is done, mark the board as solved
-            solved = true;
+            while (!findRoute()) {}
 
-            parent.Invoke((MethodInvoker) delegate 
+            stopwatch.Stop();
+
+            parent.Invoke(new Action(() =>
             { 
-                parent.addText(string.Format($"Solved in {attempts} attempts, under ~{(double)(sw.ElapsedTicks / 10000.0)} ms\n"));
-                parent.changeSolve("S H O W   S O L U T I O N", true);
-            });
-
-            solveThread.Abort();
+                parent.addText($"Solved in {attempts} attempts, under ~{stopwatch.ElapsedTicks / 10000.0} ms");
+                parent.modifyButtons("S H O W   S O L U T I O N", true, true, true);
+            }));
         }
 
         public void getSolution()
         {
-            attempts = 0;
-            sw.Reset();
-            solveThread = new Thread(solve);
-            solveThread.Start();
-        }
-
-        public void cancelSolving()
-        {
-            if (solveThread.IsAlive) solveThread.Abort();
+            Task.Run(() => solve());
         }
     }
 }

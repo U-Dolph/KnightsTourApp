@@ -143,13 +143,12 @@ namespace KnightsTourApp
             // 
             // speedLabel
             // 
-            this.speedLabel.Font = new System.Drawing.Font("Impact", 14F);
+            this.speedLabel.Font = new System.Drawing.Font("Consolas", 14F);
             this.speedLabel.ForeColor = System.Drawing.Color.White;
             this.speedLabel.Location = new System.Drawing.Point(10, 385);
             this.speedLabel.Name = "speedLabel";
             this.speedLabel.Size = new System.Drawing.Size(280, 35);
             this.speedLabel.TabIndex = 8;
-            this.speedLabel.Text = "Speed: 1000 ms";
             this.speedLabel.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             // 
             // MainForm

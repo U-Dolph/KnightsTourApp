@@ -1,12 +1,7 @@
 ﻿using KnightsTourApp.Properties;
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -15,6 +10,7 @@ namespace KnightsTourApp
 {
     public partial class MainForm : Form
     {
+        //https://stackoverflow.com/questions/18822067/rounded-corners-in-c-sharp-windows-forms
         /*------------------------------------------------------*/
         [DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
         private static extern IntPtr CreateRoundRectRgn
@@ -28,72 +24,71 @@ namespace KnightsTourApp
         );
         /*------------------------------------------------------*/
 
-        Board chessboard;
-        PictureBox knight;
-        Thread drawingThread;
+        Board   chessboard;
+        bool    paused;
 
         public MainForm()
         {
             InitializeComponent();
-
             applyRounding();
 
-            logBox.AppendText(getTime() + " Program started...\n");
-
-            solveButton.Text = "S O L V I N G . . .";
+            addText("Application started...");
+            modifyButtons("S O L V I N G . . .", false, false, true);
         }
-
+        
         private void MainForm_Load(object sender, EventArgs e)
         {
-            initChessboard();
-
             chessboard = new Board(8, 8, 1, 0, this);
+            initChessboardUI();
 
-            drawingThread = new Thread(moveKnight);
+            speedLabel.Text = string.Format($"SPEED: {1100 - speedModifierBar.Value}ms");
+
+            Task.Run(() => moveKnight());
+        }
+
+        
+        public void addText(string str)
+        {
+            logBox.AppendText($"[{DateTime.Now.Hour}:{DateTime.Now.Minute}:{DateTime.Now.Second}] {str}\n");
+            logBox.ScrollToCaret();
+        }
+
+        public void modifyButtons(string str, bool solveEnabled, bool resetEnabled, bool isPaused)
+        {
+            solveButton.Text = str;
+
+            solveButton.Enabled = solveEnabled;
+            resetButton.Enabled = resetEnabled;
+
+            paused = isPaused;
         }
 
         private void applyRounding()
         {
             //MainForm
             FormBorderStyle = FormBorderStyle.None;
-            Region = Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 20, 20));
+            Region          = Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 20, 20));
 
             //Buttons
-            quitButton.Region = Region.FromHrgn(CreateRoundRectRgn(0, 0, quitButton.Width, quitButton.Height, 35, 35));
-            solveButton.Region = Region.FromHrgn(CreateRoundRectRgn(0, 0, solveButton.Width, solveButton.Height, 35, 35));
-            resetButton.Region = Region.FromHrgn(CreateRoundRectRgn(0, 0, resetButton.Width, resetButton.Height, 35, 35));
+            solveButton.Region  = Region.FromHrgn(CreateRoundRectRgn(0, 0, solveButton.Width, solveButton.Height, solveButton.Height, solveButton.Height));
+            resetButton.Region  = Region.FromHrgn(CreateRoundRectRgn(0, 0, resetButton.Width, resetButton.Height, resetButton.Height, resetButton.Height));
+            quitButton.Region   = Region.FromHrgn(CreateRoundRectRgn(0, 0, quitButton.Width, quitButton.Height, quitButton.Height, quitButton.Height));
         }
 
-        private string getTime()
-        {
-            return "[" + DateTime.Now.Hour + ":" + DateTime.Now.Minute + ":" + DateTime.Now.Second + "]";
-        }
-
-
-
-        private void initChessboard()
+        private void initChessboardUI()
         {
             int tileSize = 80;
             int gridSize = 8;
-            
-            chessboardContainer.Controls.Clear();
 
-            knight = new PictureBox
-            {
-                Image = Resources.knight,
-                Location = new Point(30 + 1 * tileSize + 15, 30 + 0 * tileSize + 15),
-                Size = new Size(Resources.knight.Width, Resources.knight.Height),
-                BackColor = Color.Transparent
-            };
-
-            knight.Parent = chessboardContainer;
-            //chessboardContainer.Controls.Add(knight);
-
+            //Positions the knight to its initial place
+            chessboard.knight.Image.Location = new Point(30 + chessboard.knight.x * tileSize + 15, 30 + chessboard.knight.y * tileSize + 15);
+            chessboard.knight.Image.Parent = chessboardContainer;
 
             for (var x = 0; x < gridSize; x++)
             {
                 for (var y = 0; y < gridSize; y++)
                 {
+                    //Chosing which cell image to use (orange | cyan)
                     var cellImage = new PictureBox
                     {
                         Image = y % 2 == 0 ? (x % 2 != 0 ? Resources.cell1 : Resources.cell2) : (x % 2 != 0 ? Resources.cell2 : Resources.cell1),
@@ -104,6 +99,7 @@ namespace KnightsTourApp
                     if (!(x == 0 && y == 0 || x == 7 && y == 0 || x == 0 && y == 7 || x == 7 && y == 7))
                         chessboardContainer.Controls.Add(cellImage);
 
+                    //Top row number labels
                     if (x == 0)
                     {
                         Label numLbl = new Label
@@ -121,6 +117,7 @@ namespace KnightsTourApp
                     }
                 }
 
+                //Left side collumn letter labels
                 Label charLbl = new Label
                 {
                     Text = Convert.ToChar(65 + x).ToString(),
@@ -136,160 +133,95 @@ namespace KnightsTourApp
             }
         }
 
-        
 
-        public void addText(string str)
-        {
-            logBox.AppendText(getTime() + " " + str);
-            logBox.ScrollToCaret();
-        }
-
-        public void changeSolve(string str, bool enabled)
-        {
-            solveButton.Text = str;
-            solveButton.Enabled = enabled;
-            resetButton.Enabled = enabled;
-        }
-
-
-
-        private void resetButton_Click(object sender, EventArgs e)
-        {
-            solveButton.Enabled = resetButton.Enabled = false;
-            solveButton.Text = "S O L V I N G . . .";
-            initChessboard();
-
-            if (drawingThread.IsAlive)
-            {
-                try
-                {
-                    drawingThread.Resume();
-                }
-                catch { }
-                finally
-                {
-                    drawingThread.Abort();
-                    drawingThread = new Thread(moveKnight);
-                }
-            }
-
-            chessboard.getSolution();
-        }
-
-        private void solveButton_Click(object sender, EventArgs e)
-        {
-            if (solveButton.Text == "S H O W   S O L U T I O N" || solveButton.Text == "R E S U M E")
-            {
-                solveButton.Text = "P A U S E";
-
-                if (drawingThread.IsAlive)
-                { 
-                    drawingThread.Resume();
-                }
-                else
-                {
-                    drawingThread = new Thread(moveKnight);
-                    drawingThread.Start();
-                }
-            }
-            else
-            { 
-                solveButton.Text = "R E S U M E";
-                drawingThread.Suspend();
-            }
-        }
-
-        private void quitButton_Click(object sender, EventArgs e)
-        {
-            chessboard.cancelSolving();
-
-            if (drawingThread.IsAlive)
-            {
-                try
-                {
-                    drawingThread.Resume();
-                }
-                catch { }
-                finally
-                {
-                    drawingThread.Abort();
-                }
-            }    
-
-            Close();
-        }
 
         private void moveKnight()
         {
             int[] returned;
             int speedModifier = 100;
-            
-            for (int current = 1; current <= chessboard.width * chessboard.height - 4; ++current)
-            {
-                returned = findStep(current);
 
-                Invoke((MethodInvoker) delegate
+            while (true)
+                if (!paused)
                 {
-                    Label _lbl = new Label
+                    returned = findStep(chessboard.knight.Current == chessboard.Width * chessboard.Height - 3? 1 : chessboard.knight.Current);
+
+                    Invoke(new Action(() =>
                     {
-                        Text = current.ToString(),
-                        AutoSize = false,
-                        Size = new Size(60, 60),
-                        TextAlign = ContentAlignment.MiddleCenter,
-                        Location = new Point(30 + returned[0] * 80 + 10, 30 + returned[1] * 80 + 10),
-                        ForeColor = returned[1] % 2 == 0 ? (returned[0] % 2 != 0 ? Color.FromArgb(112, 246, 209) : Color.FromArgb(251, 85, 26)) : (returned[0] % 2 != 0 ? Color.FromArgb(251, 85, 26) : Color.FromArgb(112, 246, 209)),
-                        Font = new Font("Impact", 20, FontStyle.Regular, GraphicsUnit.Pixel)
-                    };
+                        Label _lbl = new Label
+                        {
+                            Text = chessboard.knight.Current.ToString(),
+                            AutoSize = false,
+                            Size = new Size(60, 60),
+                            TextAlign = ContentAlignment.MiddleCenter,
+                            Location = new Point(30 + returned[0] * 80 + 10, 30 + returned[1] * 80 + 10),
+                            ForeColor = returned[1] % 2 == 0 ? (returned[0] % 2 != 0 ? Color.FromArgb(112, 246, 209) : Color.FromArgb(251, 85, 26)) : (returned[0] % 2 != 0 ? Color.FromArgb(251, 85, 26) : Color.FromArgb(112, 246, 209)),
+                            Font = new Font("Impact", 20, FontStyle.Regular, GraphicsUnit.Pixel),
+                            Name = "Position Display"
+                        };
 
-                    chessboardContainer.Controls.Add(_lbl);
-                    chessboardContainer.Controls[chessboardContainer.Controls.Count - 1].BringToFront();
-                    knight.BringToFront();
+                        chessboardContainer.Controls.Add(_lbl);
+                        chessboardContainer.Controls[chessboardContainer.Controls.Count - 1].BringToFront();
 
-                    knight.Location = new Point(30 + returned[0] * 80 + 15, 30 + returned[1] * 80 + 15);
-                    speedModifier = speedModifierBar.Value;
-                    addText($"Knight jumped to {Convert.ToChar(65 + returned[0])}{8 - returned[1]}\n");
-                });
+                        chessboard.knight.Image.BringToFront();
+                        chessboard.knight.Image.Location = new Point(30 + returned[0] * 80 + 15, 30 + returned[1] * 80 + 15);
 
-                Thread.Sleep(1100 - speedModifier);
+                        speedModifier = speedModifierBar.Value;
+                        addText(string.Format(chessboard.knight.Current == chessboard.Width * chessboard.Height - 3 ? "Knight returned to " : "Knight jumped to ") + $"{Convert.ToChar(65 + returned[0])}{8 - returned[1]}");
 
-                if (current == chessboard.width * chessboard.height - 4)
-                {
-                    returned = findStep(1);
+                        if (chessboard.knight.Current == chessboard.Width * chessboard.Height - 3)
+                            modifyButtons("D O N E", false, true, true);
+                    }));
 
-                    Invoke((MethodInvoker)delegate
-                    {
-                        knight.Location = new Point(30 + returned[0] * 80 + 15, 30 + returned[1] * 80 + 15);
+                    Thread.Sleep(1100 - speedModifier);
 
-                        addText($"Knight returned to {Convert.ToChar(65 + returned[0])}{8 - returned[1]}\n");
-
-                        solveButton.Text = "D O N E";
-                        solveButton.Enabled = false;
-                    });
+                    ++chessboard.knight.Current;
                 }
-            }
-
-            drawingThread.Abort();
         }
 
         private int[] findStep(int num)
         {
-            int xPos = -1;
-            int yPos = -1;
-            
-            for (int y = 0; y < chessboard.height; ++y)
-                for (int x = 0; x < chessboard.width; ++x)
+            for (int y = 0; y < chessboard.Height; ++y)
+                for (int x = 0; x < chessboard.Width; ++x)
                     if (chessboard.fields[y, x] == num)
-                    {
-                        xPos = x;
-                        yPos = y;
-                    }
+                        return new int[] { x, y };
 
-            return new int[] {xPos, yPos};
+            return null;
+        }
+
+
+        private void resetButton_Click(object sender, EventArgs e)
+        {
+            chessboard.getSolution();
+
+            modifyButtons("S O L V I N G . . .", false, false, true);
+
+            //Remove every step-counting label
+            for (int i = chessboardContainer.Controls.Count - 1; i >= 0; --i)
+                if (chessboardContainer.Controls[i].Name == "Position Display")
+                    chessboardContainer.Controls.RemoveAt(i);
+
+            int[] startPos = findStep(1);
+
+            chessboard.knight.Image.Location = new Point(30 + startPos[0] * 80 + 15, 30 + startPos[1] * 80 + 15);
+            chessboard.knight.Current = 1;
+        }
+
+        private void solveButton_Click(object sender, EventArgs e)
+        {
+            if (solveButton.Text == "S H O W   S O L U T I O N" || solveButton.Text == "R E S U M E")
+                modifyButtons("P A U S E", true, false, false);
+            else
+                modifyButtons("R E S U M E", true, true, true);
+        }
+
+        private void quitButton_Click(object sender, EventArgs e)
+        {
+            Close();
         }
 
         private void speedModifierBar_ValueChanged(object sender, EventArgs e)
         {
-            speedLabel.Text = string.Format($"Speed: {1100 - speedModifierBar.Value} ms");
+            speedLabel.Text = string.Format($"SPEED: {1100 - speedModifierBar.Value}ms");
         }
     }
 }
